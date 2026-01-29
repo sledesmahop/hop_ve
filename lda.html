@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Análisis Z-Score Macoreconómico</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 2rem;
+      background: #f5f5f5;
+    }
+    h1 { margin-bottom: 1.5rem; }
+    .box {
+      background: white;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+    }
+    th, td {
+      padding: 0.6rem 0.8rem;
+      border-bottom: 1px solid #e0e0e0;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    th:first-child, td:first-child { text-align: left; }
+    input[type=number] { width: 6rem; }
+    input[type=text] { width: 5rem; text-transform: uppercase; }
+    .badge { padding: .2rem .6rem; border-radius: 4px; font-size: .85rem; }
+    .low { background:#d1fae5; }
+    .mid { background:#fde68a; }
+    .high{ background:#fecaca; }
+  </style>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+</head>
+<body>
+
+<h1>Análisis Z-Score Macoreconómico</h1>
+
+<div class="box">
+  <h2>Ponderaciones del modelo</h2>
+  <table id="weights">
+    <thead>
+      <tr><th>Indicador</th><th>Peso</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div class="box">
+  <h2>Países a evaluar (ISO2)</h2>
+  <p>Ejemplo: AR, MX, PE, UY</p>
+  <input id="countries" type="text" value="AR,MX,PE" style="width:20rem" />
+  <button id="run">Evaluar</button>
+</div>
+
+<div class="box">
+  <h2>Resultados</h2>
+  <table id="results">
+    <thead>
+      <tr>
+        <th>País</th>
+        <th>Nivel de riesgo</th>
+        <th>Clasificación</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+  // JSON con coeficientes ADL
+  const COEFS_DEFAULT = {
+  "RL.EST": -0.7960456404794978,
+  "LP.LPI.OVRL.XQ": -0.771651613847715,
+  "CC.EST": 0.6278113976816607,
+  "LP.LPI.INFR.XQ": 0.4138058317010348,
+  "LP.LPI.TIME.XQ": 0.36429316654472377,
+  "SP.URB.GROW": 0.2301331628641921,
+  "IT.NET.USER.ZS": -0.20597134944234194,
+  "SP.URB.TOTL.IN.ZS": 0.07398519203729507,
+  "IT.CEL.SETS.P2": 0.07329258503399559,
+  "IS.AIR.PSGR": 0.0697224468660509,
+  "SI.POV.GINI": -0.05827900352563325,
+  "NE.TRD.GNFS.ZS": -0.050848187703005414,
+  "NY.GDP.PCAP.CD": -0.0476071342387558,
+  "IT.NET.BBND.P2": -0.03700309710600882,
+  "FP.CPI.TOTL.ZG": 0.033446551967550676,
+  "IS.SHP.GOOD.TU": -0.02215730883342364,
+  "EN.POP.DNST": 0.015277617484172881,
+  "GE.EST": -0.014717193086434252
+};
+
+  // Nombres en castellano
+  const INDICATOR_LABELS = {
+    "SP.URB.TOTL.IN.ZS": "Urbanización Total (%)",
+    "EN.POP.DNST": "Densidad Poblacional",
+    "SP.URB.GROW": "Crecimiento Urbano (%)",
+    "IS.ROD.TOTL.KM": "Kilómetros de Carreteras",
+    "IS.ROD.PAVE.ZS": "Porcentaje Pavimentado (%)",
+    "IS.AIR.PSGR": "Pasajeros Aéreos",
+    "IS.SHP.GOOD.TU": "Carga Marítima",
+    "IT.NET.USER.ZS": "Usuarios Internet (%)",
+    "IT.CEL.SETS.P2": "Teléfonos Celulares",
+    "IT.NET.BBND.P2": "Internet Banda Ancha",
+    "LP.LPI.OVRL.XQ": "LPI General",
+    "LP.LPI.INFR.XQ": "Infraestructura LPI",
+    "LP.LPI.TIME.XQ": "Tiempo LPI",
+    "NE.TRD.GNFS.ZS": "Comercio (% PIB)",
+    "NY.GDP.PCAP.CD": "PIB per cápita",
+    "FP.CPI.TOTL.ZG": "Inflación (%)",
+    "SI.POV.GINI": "Coef. GINI",
+    "RL.EST": "Estabilidad Legal",
+    "CC.EST": "Eficiencia Gobierno",
+    "GE.EST": "Estabilidad Económica",
+    "IC.REG.DURS": "Duración Registro Comercial"
+  };
+
+  let COEFS = {...COEFS_DEFAULT};
+
+  // Renderizar tabla de pesos
+  $(document).ready(function(){
+    Object.keys(COEFS_DEFAULT).forEach(ind=>{
+      const label = INDICATOR_LABELS[ind] || ind;
+      $("#weights tbody").append(`
+        <tr>
+          <td>${label} (${ind})</td>
+          <td><input type="number" data-indicator="${ind}" value="${COEFS_DEFAULT[ind]}"></td>
+        </tr>
+      `);
+    });
+  });
+
+  async function fetchLatestWB(indicator, country){
+    const url = `https://api.worldbank.org/v2/country/${country}/indicator/${indicator}?format=json&per_page=1&date=2023:2023`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if(data[1] && data[1][0] && data[1][0].value !== null){
+        return data[1][0].value;
+      } else return 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  $("#run").on("click", async function(){
+    const countries = $("#countries").val().split(",").map(c=>c.trim().toUpperCase());
+
+    // Leer inputs de pesos
+    $("#weights input").each(function(){
+      const ind = $(this).data("indicator");
+      COEFS[ind] = parseFloat($(this).val());
+    });
+
+    const results = [];
+    for(const c of countries){
+      let score = 0;
+      for(const ind of Object.keys(COEFS)){
+        const val = await fetchLatestWB(ind, c);
+        score += val * COEFS[ind];
+      }
+      results.push({country: c, score});
+    }
+
+    // Escalar 0-100
+    const minS = Math.min(...results.map(r=>r.score));
+    const maxS = Math.max(...results.map(r=>r.score));
+    results.forEach(r=>{
+      r.score_scaled = ((r.score - minS)/(maxS - minS))*100;
+      if(r.score_scaled<33) r.level="Bajo";
+      else if(r.score_scaled<66) r.level="Medio";
+      else r.level="Alto";
+    });
+
+    // Ordenar descendente
+    results.sort((a,b)=>b.score_scaled - a.score_scaled);
+
+    $("#results tbody").empty();
+    results.forEach(r=>{
+      $("#results tbody").append(`
+        <tr class="${r.level==='Alto'?'high':r.level==='Medio'?'mid':'low'}">
+          <td>${r.country}</td>
+          <td>${r.score_scaled.toFixed(2)}</td>
+          <td>${r.level}</td>
+        </tr>
+      `);
+    });
+  });
+</script>
+</body>
+</html>

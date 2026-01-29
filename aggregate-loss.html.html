@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HOP Expansión – Análisis de Pérdidas Agregadas</title>
+    <style>
+      body{font-family:system-ui,sans-serif;background:#0f172a;color:#e5e7eb;margin:0;padding:20px}h1{margin-bottom:16px}.panel{background:#111827;border:1px solid #1f2937;padding:16px;border-radius:10px;margin-bottom:20px}input{display:block;width:100%;margin-bottom:8px;padding:6px;background:#020617;color:#e5e7eb;border:1px solid #1f2937}button{padding:8px;font-weight:600}canvas{width:100%;margin-top:12px}.tab{display:none}.tab.active{display:block}.tabs button{margin-right:4px}
+
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      (function(){const e=document.createElement("link").relList;if(e&&e.supports&&e.supports("modulepreload"))return;for(const a of document.querySelectorAll('link[rel="modulepreload"]'))t(a);new MutationObserver(a=>{for(const n of a)if(n.type==="childList")for(const o of n.addedNodes)o.tagName==="LINK"&&o.rel==="modulepreload"&&t(o)}).observe(document,{childList:!0,subtree:!0});function s(a){const n={};return a.integrity&&(n.integrity=a.integrity),a.referrerPolicy&&(n.referrerPolicy=a.referrerPolicy),a.crossOrigin==="use-credentials"?n.credentials="include":a.crossOrigin==="anonymous"?n.credentials="omit":n.credentials="same-origin",n}function t(a){if(a.ep)return;a.ep=!0;const n=s(a);fetch(a.href,n)}})();class g{seed;constructor(e){this.seed=e>>>0}uniform(){let e=this.seed+=1831565813;return e=Math.imul(e^e>>>15,e|1),e^=e+Math.imul(e^e>>>7,e|61),((e^e>>>14)>>>0)/4294967296}}class b{constructor(e=1e5,s=new g(123)){this.nSims=e,this.random=s,this.losses=new Float64Array(this.nSims)}risks=[];losses;addRisk(e){return this.risks.push(e),this}run(){for(let e=0;e<this.nSims;e++){let s=0;for(const t of this.risks){const a=t.sampleFrequency(this.random);for(let n=0;n<a;n++)s+=t.sampleSeverity(this.random)}this.losses[e]=s}return this}getEconomicCapital(e){return this.getVaR(e)-this.getExpectedLoss()}getPremium(e,s=.5){return this.getExpectedLoss()+s*this.getEconomicCapital(e)}getVaR(e){return this.calcQuantiles(this.losses,e)}getTVaR(e){const s=this.getVaR(e);let t=0,a=0;for(const n of this.losses)n>=s&&(t+=n,a++);return t/a}getLosses(){return this.losses}getExpectedLoss(){return this.calcMean(this.losses)}calcMean(e){let s=0,t=0;for(const a of e)a!=null&&(s+=a,t++);return s/t}calcQuantiles(e,s){const t=[...e].sort((l,c)=>l-c),a=(t.length-1)*s,n=Math.floor(a),o=Math.ceil(a),r=a-n;return o>=t.length?t[n]:t[n]*(1-r)+t[o]*r}}class h{constructor(e,s,t=1){this.p=e,this.mu=s,this.sigma=t}sampleFrequency(e){const s=Math.exp(-this.p);let t=0,a=1;do t++,a*=e.uniform();while(a>s);return t-1}sampleSeverity(e){const s=e.uniform(),t=e.uniform(),a=Math.sqrt(-2*Math.log(s))*Math.cos(2*Math.PI*t);return Math.exp(this.mu+this.sigma*a)}}class f extends h{constructor(e,s,t=1){const a=t*t,n=s*s,o=Math.log(1+a/n),r=Math.sqrt(o),l=Math.log(s)-.5*o;super(e,l,r)}getDescription(){return"Riesgo por fallo de entrega en PDE | Frecuencia: Poisson | Severidad: Lognormal"}}class v{constructor(e,s,t,a){this.n=e,this.p=s,this.alpha=t,this.theta=a}sampleFrequency(e){let s=0;for(let t=0;t<this.n;t++)e.uniform()<this.p&&s++;return s}sampleSeverity(e){const s=this.alpha,t=this.theta;if(s<1){const a=e.uniform();return this.sampleGamma(s+1,e)*Math.pow(a,1/s)*t}return this.sampleGamma(s,e)*t}sampleGamma(e,s){const t=e-.3333333333333333,a=1/Math.sqrt(9*t);for(;;){const n=s.uniform(),o=s.uniform(),r=Math.sqrt(-2*Math.log(n))*Math.cos(2*Math.PI*o),l=Math.pow(1+a*r,3);if(l<=0)continue;const c=s.uniform();if(c<1-.0331*Math.pow(r,4)||Math.log(c)<.5*r*r+t*(1-l+Math.log(l)))return t*l}}}class y extends v{constructor(e,s,t,a){const n=a/t,o=1/(n*n),r=t*n*n;super(e,s,o,r)}getDescription(){return"Riesgo por incumplimiento del SLA por parte del carrier | Frecuencia: Binominal | Severidad: Gamma"}}class R{constructor(e,s,t){this.n=e,this.p=s,this.cost=t}sampleFrequency(e){let s=0;for(let t=0;t<this.n;t++)e.uniform()<this.p&&s++;return s}sampleSeverity(e){return this.cost}}class M extends R{constructor(e,s,t){super(e,s,t)}getDescription(){return"Riesgo por multa regulatoria | Frecuencia: Binomial | Severidad: Determinista"}}class E{constructor(e,s,t){this.p=e,this.minCost=s,this.maxCost=t}sampleFrequency(e){return e.uniform()<this.p?1:0}sampleSeverity(e){return this.minCost+(this.maxCost-this.minCost)*e.uniform()}}class _ extends E{constructor(e,s,t){super(e,s,t)}getDescription(){return"Riesgo de retraso en el cronograma | Frecuencia: Bernoulli | Severidad: Uniforme"}}class L extends h{constructor(e,s,t){const a=t*t,n=s*s,o=Math.log(1+a/n),r=Math.sqrt(o),l=Math.log(s)-.5*o;super(e,l,r)}getDescription(){return"Riesgo de integración fallida con plataformas | Frecuencia: Poisson | Severidad: Lognormal"}}const u=new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",minimumFractionDigits:2,maximumFractionDigits:2});document.querySelector("#app").innerHTML=`
+<h1>📊 HOP VE – Análisis de Pérdidas Agregadas</h1>
+
+<label>
+  Simulaciones Monte Carlo
+  <input id="nSims" type="number" value="50000" />
+</label>
+
+<div class="tabs">
+  <button data-tab="delivery">🚚 Delivery</button>
+  <button data-tab="sla">📦 SLA</button>
+  <button data-tab="regulatory">⚖️ Multas</button>
+  <button data-tab="roadmap">🗺️ Roadmap</button>
+  <button data-tab="integration">🔌 Integración</button>
+</div>
+
+<div class="tab-content">
+
+<section id="delivery" class="tab active">
+  <h3>Riesgo por fallo de entrega</h3>
+
+  <label>Tasa anual de fallos</label>
+  <input id="del_p" type="number" step="0.01" value="2" />
+
+  <label>Costo promedio por fallo</label>
+  <input id="del_mu" type="number" value="1000" />
+
+  <label>Desviación estándar del costo</label>
+  <input id="del_sigma" type="number" value="600" />
+</section>
+
+<section id="sla" class="tab">
+  <h3>Riesgo por incumplimiento de SLA</h3>
+
+  <label>Cantidad de observaciones</label>
+  <input id="sla_n" type="number" value="1000" />
+
+  <label>Probabilidad de incumplimiento</label>
+  <input id="sla_p" type="number" step="0.001" value="0.01" />
+
+  <label>Costo promedio</label>
+  <input id="sla_mu" type="number" value="500" />
+
+  <label>Desviación estándar</label>
+  <input id="sla_sigma" type="number" value="400" />
+</section>
+
+<section id="regulatory" class="tab">
+  <h3>Riesgo por multa regulatoria</h3>
+
+  <label>Observaciones anuales</label>
+  <input id="reg_n" type="number" value="12" />
+
+  <label>Probabilidad de multa</label>
+  <input id="reg_p" type="number" step="0.01" value="0.05" />
+
+  <label>Costo promedio de multa</label>
+  <input id="reg_mu" type="number" value="500000" />
+</section>
+
+<section id="roadmap" class="tab">
+  <h3>Riesgo de retraso en roadmap</h3>
+
+  <label>Probabilidad de retraso</label>
+  <input id="road_p" type="number" step="0.01" value="0.2" />
+
+  <label>Costo mínimo</label>
+  <input id="road_min" type="number" value="100000" />
+
+  <label>Costo máximo</label>
+  <input id="road_max" type="number" value="500000" />
+</section>
+
+<section id="integration" class="tab">
+  <h3>Riesgo de integración fallida</h3>
+
+  <label>Probabilidad anual</label>
+  <input id="int_p" type="number" step="0.01" value="0.3" />
+
+  <label>Pérdida promedio</label>
+  <input id="int_mu" type="number" value="800000" />
+
+  <label>Desviación estándar</label>
+  <input id="int_sigma" type="number" value="300000" />
+</section>
+
+</div>
+
+<button id="run">▶ Ejecutar simulación</button>
+
+<section class="panel">
+  <h2>Resultados</h2>
+  <pre id="results">–</pre>
+  <canvas id="hist"></canvas>
+</section>
+`;document.querySelectorAll(".tabs button").forEach(i=>{i.onclick=()=>{document.querySelectorAll(".tab").forEach(e=>e.classList.remove("active")),document.getElementById(i.dataset.tab).classList.add("active")}});document.getElementById("run").onclick=()=>{const i=new b(Number(document.getElementById("nSims").value));i.addRisk(new f(+document.getElementById("del_p").value,+document.getElementById("del_mu").value,+document.getElementById("del_sigma").value)).addRisk(new y(+document.getElementById("sla_n").value,+document.getElementById("sla_p").value,+document.getElementById("sla_mu").value,+document.getElementById("sla_sigma").value)).addRisk(new M(+document.getElementById("reg_n").value,+document.getElementById("reg_p").value,+document.getElementById("reg_mu").value)).addRisk(new _(+document.getElementById("road_p").value,+document.getElementById("road_min").value,+document.getElementById("road_max").value)).addRisk(new L(+document.getElementById("int_p").value,+document.getElementById("int_mu").value,+document.getElementById("int_sigma").value)).run();const e=.99;document.getElementById("results").textContent=`
+Pérdida Esperada: ${u.format(i.getExpectedLoss())}
+VaR 99%:          ${u.format(i.getVaR(e))}
+TVaR 99%:         ${u.format(i.getTVaR(e))}
+Capital Económico:${u.format(i.getEconomicCapital(e))}
+Prima Técnica:    ${u.format(i.getPremium(e))}
+`,S(i.getLosses())};function S(i){const e=document.getElementById("hist"),s=e.getContext("2d");e.width=e.clientWidth,e.height=300;const t=40,a=Math.min(...i),o=(Math.max(...i)-a)/t,r=Array(t).fill(0);for(const c of i){const m=Math.min(t-1,Math.floor((c-a)/o));r[m]++}const l=Math.max(...r);s.clearRect(0,0,e.width,e.height),r.forEach((c,m)=>{const d=e.width/t,p=c/l*e.height;s.fillRect(m*d,e.height-p,d-1,p)})}
+    </script>
+  </body>
+</html>
